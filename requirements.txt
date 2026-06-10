@@ -1,0 +1,7 @@
+pytest
+scikit-learn
+numpy
+pandas
+spacy
+sentence-transformers
+joblib
