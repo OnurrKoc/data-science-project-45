@@ -18,10 +18,60 @@ saniye sürer. Bu yüzden çözümde modelleri modül-seviyesinde bir kez yükle
 cache'lemek mantıklıdır (zorunlu değil).
 """
 
+import os
 import re
+import pickle
 
 import numpy as np
 
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+_DATASET = [
+    # sport
+    ("The football team won the championship final after a dramatic penalty shootout.", "sport"),
+    ("Serena Williams advanced to the tennis semifinal with a powerful serve.", "sport"),
+    ("The basketball player scored forty points in last night's game.", "sport"),
+    ("The marathon runner broke the world record in the Olympic stadium.", "sport"),
+    ("The coach praised his players after a stunning comeback victory.", "sport"),
+    ("Cristiano Ronaldo scored a hat-trick in the league match on Saturday.", "sport"),
+    ("The cricket team celebrated their tournament win with the trophy.", "sport"),
+    ("The swimmer earned a gold medal in the freestyle relay event.", "sport"),
+    ("Fans cheered as the goalkeeper saved the decisive penalty kick.", "sport"),
+    ("The boxing champion defended his title in a twelve round bout.", "sport"),
+    ("The rugby squad trained hard ahead of the World Cup quarterfinal.", "sport"),
+    ("The cyclist sprinted to the finish line to win the mountain stage.", "sport"),
+
+    # business
+    ("The company reported record quarterly profits and raised its dividend.", "business"),
+    ("Investors reacted to the central bank's decision on interest rates.", "business"),
+    ("The startup raised fifty million dollars in a new funding round.", "business"),
+    ("Shares of the technology firm surged after strong earnings results.", "business"),
+    ("The merger between the two banks created a financial giant.", "business"),
+    ("The stock market fell sharply amid fears of rising inflation.", "business"),
+    ("The CEO announced a restructuring plan to cut operating costs.", "business"),
+    ("Oil prices climbed as demand recovered across global markets.", "business"),
+    ("The retailer expanded into new markets to boost annual revenue.", "business"),
+    ("Analysts forecast steady growth for the consumer goods sector.", "business"),
+    ("The corporation acquired a rival to strengthen its market share.", "business"),
+    ("Quarterly sales exceeded expectations, lifting the firm's valuation.", "business"),
+
+    # tech
+    ("The new smartphone features a faster chip and an improved camera.", "tech"),
+    ("Engineers released a software update to patch a security vulnerability.", "tech"),
+    ("The artificial intelligence model can generate realistic images from text.", "tech"),
+    ("The cloud platform now supports faster data processing at scale.", "tech"),
+    ("Developers built an app using the latest machine learning framework.", "tech"),
+    ("The laptop comes with a high resolution display and longer battery life.", "tech"),
+    ("The company unveiled a self driving car powered by deep learning.", "tech"),
+    ("A new programming language promises safer and faster code execution.", "tech"),
+    ("The robotics lab demonstrated a humanoid robot that can walk and grasp.", "tech"),
+    ("The chipmaker announced a powerful processor for data centers.", "tech"),
+    ("The operating system update brings new privacy and battery features.", "tech"),
+    ("Researchers trained a neural network to translate dozens of languages.", "tech"),
+]
 
 # Basit İngilizce stopword listesi (ön işleme için kullanabilirsin)
 _STOPWORDS = {
@@ -32,6 +82,26 @@ _STOPWORDS = {
     "after", "ahead", "amid", "across", "into", "now", "can",
 }
 
+_SPACY_NLP = None
+_ST_MODEL = None
+
+
+def _get_spacy():
+    """spaCy en_core_web_sm modelini bir kez yükle, sonra cache'le."""
+    global _SPACY_NLP
+    if _SPACY_NLP is None:
+        import spacy
+        _SPACY_NLP = spacy.load("en_core_web_sm")
+    return _SPACY_NLP
+
+
+def _get_st_model():
+    """sentence-transformers all-MiniLM-L6-v2 modelini bir kez yükle, cache'le."""
+    global _ST_MODEL
+    if _ST_MODEL is None:
+        from sentence_transformers import SentenceTransformer
+        _ST_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _ST_MODEL
 
 # 0. Gömülü veri seti
 def load_data():
@@ -51,7 +121,9 @@ def load_data():
       tech: yazılım, çip, yapay zekâ...
     - X ve y aynı uzunlukta olmalı.
     """
-    pass
+    X = [text for text, _ in _DATASET]
+    y = [label for _, label in _DATASET]
+    return X, y
 
 
 # 1. Ön işleme
@@ -75,7 +147,10 @@ def preprocess(text):
     - tokens = [t for t in text.split() if t not in _STOPWORDS]
     - return " ".join(tokens)
     """
-    pass
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", " ", text)
+    tokens = [t for t in text.split() if t not in _STOPWORDS]
+    return " ".join(tokens)
 
 
 # 2. Sınıflandırıcı pipeline — TF-IDF + LogisticRegression
@@ -93,7 +168,10 @@ def build_classifier():
     - from sklearn.feature_extraction.text import TfidfVectorizer
     - from sklearn.linear_model import LogisticRegression
     """
-    pass
+    return Pipeline([
+        ("tfidf", TfidfVectorizer(preprocessor=preprocess)),
+        ("clf", LogisticRegression(max_iter=1000, random_state=42)),
+    ])
 
 
 def train_classifier(pipe, X, y):
@@ -102,7 +180,8 @@ def train_classifier(pipe, X, y):
 
     İpucu: pipe.fit(X, y); return pipe
     """
-    pass
+    pipe.fit(X, y)
+    return pipe
 
 
 def classify(pipe, text):
@@ -111,7 +190,7 @@ def classify(pipe, text):
 
     İpucu: pipe.predict([text])[0]
     """
-    pass
+    return pipe.predict([text])[0]
 
 
 def evaluate(pipe, X, y):
@@ -122,7 +201,8 @@ def evaluate(pipe, X, y):
     - from sklearn.metrics import accuracy_score
     - y_pred = pipe.predict(X); return accuracy_score(y, y_pred)
     """
-    pass
+    y_pred = pipe.predict(X)
+    return accuracy_score(y, y_pred)
 
 
 # 3. Named Entity Recognition — spaCy
@@ -143,7 +223,9 @@ def extract_entities(text):
     - doc = nlp(text)
     - return [(ent.text, ent.label_) for ent in doc.ents]
     """
-    pass
+    nlp = _get_spacy()
+    doc = nlp(text)
+    return [(ent.text, ent.label_) for ent in doc.ents]
 
 
 # 4. Semantik arama — sentence-transformers + cosine
@@ -170,7 +252,12 @@ def semantic_search(query, docs, top_k=3):
     - order = np.argsort(scores)[::-1][:top_k]
     - return [(docs[i], float(scores[i])) for i in order]
     """
-    pass
+    model = _get_st_model()
+    doc_emb = model.encode(docs, convert_to_numpy=True, normalize_embeddings=True)
+    q_emb = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+    scores = doc_emb @ q_emb
+    order = np.argsort(scores)[::-1][:top_k]
+    return [(docs[i], float(scores[i])) for i in order]
 
 
 # 5. Modeli kaydet / yükle — joblib
@@ -182,7 +269,9 @@ def save_model(pipe, path):
     - import joblib
     - joblib.dump(pipe, path); return path
     """
-    pass
+    import joblib
+    joblib.dump(pipe, path)
+    return path
 
 
 def load_model(path):
@@ -193,7 +282,8 @@ def load_model(path):
     - import joblib
     - return joblib.load(path)
     """
-    pass
+    import joblib
+    return joblib.load(path)
 
 
 # 6. Uçtan uca pipeline
@@ -214,7 +304,28 @@ def run_pipeline():
             'search_results': list[tuple]
         }
     """
-    pass
+    X, y = load_data()
+
+    # Sınıflandırma
+    pipe = build_classifier()
+    pipe = train_classifier(pipe, X, y)
+    acc = evaluate(pipe, X, y)
+    sample_pred = classify(pipe, "The team won the game with a last minute goal.")
+
+    # NER
+    entities = extract_entities(
+        "Apple unveiled a new iPhone in California while Serena Williams won in London."
+    )
+
+    # Semantik arama
+    results = semantic_search("a player scored a goal in the match", X, top_k=3)
+
+    return {
+        "accuracy": acc,
+        "sample_prediction": sample_pred,
+        "entities": entities,
+        "search_results": results,
+    }
 
 
 if __name__ == "__main__":
